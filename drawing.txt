@@ -1,0 +1,95 @@
+import cv2
+import numpy as np
+import mediapipe as mp
+
+
+class HandDetector:
+    def __init__(self, maxHands=1):
+        self.hands = mp.solutions.hands.Hands(max_num_hands=maxHands)
+        self.mpDraw = mp.solutions.drawing_utils
+
+    def findHands(self, img):
+        imgRGB = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+        results = self.hands.process(imgRGB)
+        handLandmarks = []
+        h, w, _ = img.shape
+
+        if results.multi_hand_landmarks:
+            for handLms in results.multi_hand_landmarks:
+                lmList = [[int(lm.x * w), int(lm.y * h)] for lm in handLms.landmark]
+                handLandmarks.append(lmList)
+                self.mpDraw.draw_landmarks(img, handLms, mp.solutions.hands.HAND_CONNECTIONS)
+        return handLandmarks, img
+
+
+cap = cv2.VideoCapture(0)
+cap.set(3, 1280)
+cap.set(4, 720)
+
+detector = HandDetector()
+canvas = np.zeros((720, 1280, 3), dtype=np.uint8)
+
+# Colors for drawing
+colors = [(0, 0, 255), (0, 255, 0), (255, 0, 0), (0, 255, 255), (255, 0, 255), (255, 255, 0), (0, 0, 0)]
+colorNames = ["Red", "Green", "Blue", "Yellow", "Purple", "Cyan", "Eraser"]
+drawColor = colors[0]  # Default color (Red)
+selectedColorIndex = 0
+thickness = 8  # Default thickness
+prevX, prevY = None, None
+
+while True:
+    success, img = cap.read()
+    if not success:
+        break
+
+    img = cv2.flip(img, 1)
+    hands, img = detector.findHands(img)
+
+    # Draw color selection buttons
+    for i, color in enumerate(colors):
+        x1, y1, x2, y2 = 50 + i * 100, 10, 130 + i * 100, 60
+        cv2.rectangle(img, (x1, y1), (x2, y2), color, -1)
+
+        # Highlight the selected color with a white border
+        if i == selectedColorIndex:
+            cv2.rectangle(img, (x1 - 3, y1 - 3), (x2 + 3, y2 + 3), (255, 255, 255), 4)
+
+    # Drawing area border
+    cv2.rectangle(img, (40, 80), (1240, 700), (200, 200, 200), 2)
+
+    if hands:
+        hand = hands[0]
+        x, y = hand[8]  # Index finger tip
+        fingersUp = sum([1 for tip in [8, 12, 16, 20] if hand[tip][1] < hand[tip - 2][1]])
+
+        # Color Selection
+        if y < 60:
+            for i in range(len(colors)):
+                if 50 + i * 100 < x < 130 + i * 100:
+                    drawColor = colors[i]
+                    selectedColorIndex = i
+                    thickness = 50 if i == 6 else 8  # Thicker eraser
+                    prevX, prevY = None, None
+                    break
+
+        # Drawing inside the defined drawing area
+        elif fingersUp == 1 and 80 < y < 700 and 40 < x < 1240:
+            if prevX is not None and prevY is not None:
+                cv2.line(canvas, (prevX, prevY), (x, y), drawColor, thickness)
+            prevX, prevY = x, y
+        else:
+            prevX, prevY = None, None
+
+        # Clear Screen (All Fingers Up)
+        if fingersUp == 4:
+            canvas = np.zeros((720, 1280, 3), dtype=np.uint8)
+
+    # Overlay drawing on video feed
+    img = cv2.bitwise_or(img, canvas)
+    cv2.imshow("Virtual Drawing", img)
+
+    if cv2.waitKey(1) & 0xFF == 27:  # ESC to exit
+        break
+
+cap.release()
+cv2.destroyAllWindows()

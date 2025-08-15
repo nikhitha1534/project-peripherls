@@ -1,1 +1,1 @@
-https://github.com/nikhitha1534/project-peripherls/upload
+https://github.com/nikhitha1534/project-peripherls/blob/main/drawing.txt
